@@ -75,7 +75,7 @@ class LLMEngine:
             output, num_tokens = self.step()
             if num_tokens > 0:
                 prefill_throughput = num_tokens / (perf_counter() - t)
-            else:
+            else: # 为什么要用正负编码来区分 prefill 和 decode 的 throughput 呢？
                 decode_throughput = -num_tokens / (perf_counter() - t)
             pbar.set_postfix({
                 "Prefill": f"{int(prefill_throughput)}tok/s",

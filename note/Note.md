@@ -16,7 +16,7 @@ add_request()
         │ tokenizer.encode()
         │
         ▼
-Sequence(prompt, sampling_params)
+Sequence(prompt, sampling_params) # prompt 须是 encode 过后的 token_ids 的 List
         │
         ▼
 scheduler.add(seq)
@@ -101,3 +101,47 @@ class AdvancedModel(BaseModel):
 
 
 ### Day 3
+
+#### Sequence 类
+
+```python
+# @property 的作用是：方法内部可以执行计算，但调用时看起来像普通属性。
+# 正常：seq.is_finished() / 有property：seq.is_finished
+```
+
+
+
+```python
+# __getstate__ / __setstate__ 通常不是业务代码直接调用的，而是在对象被 pickle 序列化/反序列化时，由 Python 自动调用。最典型的形式是：
+import pickle
+
+seq = Sequence([10, 20, 30])
+
+data = pickle.dumps(seq)
+new_seq = pickle.loads(data)
+```
+
+```
+背后大致发生的是：
+
+pickle.dumps(seq)
+      │
+      └──→ seq.__getstate__()
+                │
+                ↓
+          得到 state tuple
+                │
+                ↓
+          序列化成 bytes
+
+
+pickle.loads(data)
+      │
+      └──→ 创建 Sequence 对象
+                │
+                ↓
+          obj.__setstate__(state)
+```
+
+### 
+

@@ -8,4 +8,4 @@ class SamplingParams:
     ignore_eos: bool = False
 
     def __post_init__(self):
-        assert self.temperature > 1e-10, "greedy sampling is not permitted"
+        assert self.temperature > 1e-10, "greedy sampling is not permitted" # Temperature 太小会导致采样退化为贪心采样，容易出现重复 token

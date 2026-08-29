@@ -23,7 +23,7 @@ class Scheduler:
         self.waiting.append(seq)
 
     def schedule(self) -> tuple[list[Sequence], bool]:
-        scheduled_seqs = []
+        scheduled_seqs = [] # 空 batch，存放本轮调度的所有 sequence
         num_batched_tokens = 0
 
         # prefill
@@ -43,7 +43,7 @@ class Scheduler:
                 break
             if not seq.block_table:
                 self.block_manager.allocate(seq, num_cached_blocks)
-            seq.num_scheduled_tokens = min(num_tokens, remaining)
+            seq.num_scheduled_tokens = min(num_tokens, remaining) # 让前面可以写 remaining == 0
             num_batched_tokens += seq.num_scheduled_tokens
             if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens:
                 seq.status = SequenceStatus.RUNNING

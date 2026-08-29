@@ -2,7 +2,7 @@
 
 #### generate() 运行逻辑：
 
-```
+```python
 generate(prompts)
         │
         ▼
@@ -17,7 +17,7 @@ add_request()
         │
         ▼
 Sequence(prompt, sampling_params) # prompt 须是 encode 过后的 token_ids 的 List
-        │
+        │           			 # 每一个 prompt 及其对应的 sp 构成一个 Sequence
         ▼
 scheduler.add(seq)
 
@@ -92,10 +92,15 @@ class AdvancedModel(BaseModel):
 
 1. 打包阶段：Python 看到 **，把所有 key=value 打包成一个字典：
    kwargs = {'extra_feature': 'flash_attn', 'model_name': 'Llama-3', 'device': 'mps', 'temperature': 0.7}
+
 2. 子类取值：子类的 __init__ 显式声明了 extra_feature，所以 Python 会从字典里弹出 'extra_feature' 赋给这个参数。此时 kwargs 里剩下：{'model_name': 'Llama-3', 'device': 'mps', 'temperature': 0.7}
+
 3. 向上透传：执行 super().__init__(**kwargs)，** 把字典解包成关键字参数传进去，等价于调用：
    BaseModel.__init__(model_name='Llama-3', device='mps', temperature=0.7)
+
 4. 父类取值：父类的 __init__ 显式声明了 model_name 和 device，吃掉这两个。剩下的 temperature=0.7 被父类的 **kwargs 捕获（虽然父类没用到，但不会报错）。
+
+   ​
 
 
 
@@ -109,8 +114,6 @@ class AdvancedModel(BaseModel):
 # 正常：seq.is_finished() / 有property：seq.is_finished
 ```
 
-
-
 ```python
 # __getstate__ / __setstate__ 通常不是业务代码直接调用的，而是在对象被 pickle 序列化/反序列化时，由 Python 自动调用。最典型的形式是：
 import pickle
@@ -121,7 +124,7 @@ data = pickle.dumps(seq)
 new_seq = pickle.loads(data)
 ```
 
-```
+```python
 背后大致发生的是：
 
 pickle.dumps(seq)
@@ -143,5 +146,42 @@ pickle.loads(data)
           obj.__setstate__(state)
 ```
 
-### 
+#### Config 类
+
+```python
+max_num_batched_tokens: int = 16384 # 一次 batch 最多调度多少 token
+max_num_seqs: int = 512 # 一次 batch 最多调度多少 sequence
+max_model_len: int = 4096 # 模型最大长度（prompt tokens + completion tokens）
+    
+# Sequence = 一条prompt + 它对应的SP + 后续生成出来的completion + 这条请求的运行状态/KV Cache信息
+# Batch = 某一次模型前向计算（forward）中，被放在一起处理的一组 Sequence / token。
+# Scheduler 每一轮决定哪些 Sequence 组成这一轮要送给模型计算的 batch。
+# 每条 Sequence 的长度、开始时间和结束时间都不一样，但 GPU 又希望尽可能把很多工作拼成 batch 一起算。
+
+### 噢，所以有可能一句话被拆到了多个batch里面，才需要seq_id来复原？
+```
+
+### Day 4
+
+#### Scheduler
+
+```python
+# Scheduler 的任务是维护 waiting 和 running 两组 Sequence，每次 schedule() 从中挑出一批 Sequence 组成当前 batch，并决定这一轮做 prefill 还是 decode。
+self.waiting: deque[Sequence] = deque() # 等待 / 需要 prefill 的 Sequence
+self.running: deque[Sequence] = deque() # 已经完成 prefill，正在 decode 的 Sequence
+    
+#目前对 BlockManager 的理解是：负责管理 KV Cache block 的分配和释放
+Scheduler
+   │
+   │ "seq A 需要 KV Cache"
+   ↓
+BlockManager
+   │
+   │ 分配物理 block
+   ↓
+seq.block_table
+
+# Scheduler 优先处理 prefill
+# 只要这一轮成功调度了 waiting 中的 Sequence，这一轮就是纯 prefill，不会再混入 decode Sequence。
+```
 

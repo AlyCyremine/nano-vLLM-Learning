@@ -32,11 +32,11 @@ class Scheduler:
             remaining = self.max_num_batched_tokens - num_batched_tokens
             if remaining == 0:
                 break
-            if not seq.block_table:
-                num_cached_blocks = self.block_manager.can_allocate(seq)
-                if num_cached_blocks == -1:
+            if not seq.block_table: # 第一次进入 prefill 的新 Sequence
+                num_cached_blocks = self.block_manager.can_allocate(seq) # 分配 KV Cache block
+                if num_cached_blocks == -1: # 无法分配
                     break
-                num_tokens = seq.num_tokens - num_cached_blocks * self.block_size
+                num_tokens = seq.num_tokens - num_cached_blocks * self.block_size # 计算真正需要 prefill 的 token
             else:
                 num_tokens = seq.num_tokens - seq.num_cached_tokens
             if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq

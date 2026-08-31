@@ -251,7 +251,8 @@ $$
 
 #### KV Cache
 
-- KV Cache 成立的基础是 **causal attention**，最后的 token 可以同时看到前面所有的信息，但是**前面的 token 不可以看到后面的 token 的信息**，所以**前面的 KV 并不会更新**。（prefill 也是 causal 的）
+- KV Cache 成立的基础是 **causal attention**，最后的 token 可以同时看到前面所有的信息，但是**前面的 token 不可以看到后面的 token 的信息**，前面的 Hidden State 并不会更新，所以**前面的 KV 可以复用**。（prefill 也是 causal 的）
+- Decode 时，新 token 只需要计算自己的 Q/K/V。新 Q 查询所有历史 K，并根据 attention weight 读取所有历史 V；新 K/V 则追加进 KV Cache。
 - 不 cache Q 是因为过去的 Q 再也用不到了，只有新生成的 token 需要去前面找注意力信息。
 - KV Cache 会因为一次请求的结束而被释放，也会因为每一次的 Prefill 不同而不同。
 ```
@@ -275,3 +276,6 @@ $$
              ▼
       attention output   
 ```
+### Day 6
+
+大部分理解都在注释里，拉高了 Block Manager 的优先级，感觉不懂怎么分配 KV Cache 块的话没法弄懂 Scheduler。

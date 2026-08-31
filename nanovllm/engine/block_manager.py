@@ -5,20 +5,20 @@ import numpy as np
 from nanovllm.engine.sequence import Sequence
 
 
-class Block:
+class Block: # 描述一个 物理KV Cache块 的管理信息
 
     def __init__(self, block_id):
         self.block_id = block_id
-        self.ref_count = 0
-        self.hash = -1
+        self.ref_count = 0 # 这个块被多少 seq 使用（为0时可以c拿去重新分配）
+        self.hash = -1 # ？
         self.token_ids = []
 
-    def update(self, hash: int, token_ids: list[int]):
+    def update(self, hash: int, token_ids: list[int]): #当某个块的 KV 已经计算完成，可以进入 prefix cache 时
         self.hash = hash
         self.token_ids = token_ids
 
-    def reset(self):
-        self.ref_count = 1
+    def reset(self): # 物理 block 被重新分配
+        self.ref_count = 1 # 重新分配时，ref_count 置为 1，表示这个块被新分配的 seq 使用
         self.hash = -1
         self.token_ids = []
 
@@ -27,50 +27,50 @@ class BlockManager:
 
     def __init__(self, num_blocks: int, block_size: int):
         self.block_size = block_size
-        self.blocks: list[Block] = [Block(i) for i in range(num_blocks)]
+        self.blocks: list[Block] = [Block(i) for i in range(num_blocks)] # 对象: 类型 = 初始值
         self.hash_to_block_id: dict[int, int] = dict()
         self.free_block_ids: deque[int] = deque(range(num_blocks))
         self.used_block_ids: set[int] = set()
 
-    @classmethod
-    def compute_hash(cls, token_ids: list[int], prefix: int = -1):
+    @classmethod # 类方法可以通过类名直接调用，而不需要实例化对象。
+    def compute_hash(cls, token_ids: list[int], prefix: int = -1): # 计算 token_ids+prefix 的哈希值
         h = xxhash.xxh64()
         if prefix != -1:
-            h.update(prefix.to_bytes(8, "little"))
+            h.update(prefix.to_bytes(8, "little")) # 将 prefix 转换为 8 字节的小端字节序，并更新哈希对象
         h.update(np.array(token_ids).tobytes())
         return h.intdigest()
 
-    def _allocate_block(self) -> int:
+    def _allocate_block(self) -> int: # 重置一个 block
         block_id = self.free_block_ids.popleft()
         block = self.blocks[block_id]
-        assert block.ref_count == 0
+        assert block.ref_count == 0 # 既然是 free，就不应该还有 Seq 使用它。
         if block.hash != -1 and self.hash_to_block_id.get(block.hash) == block_id:
             del self.hash_to_block_id[block.hash]
         block.reset()
         self.used_block_ids.add(block_id)
         return block_id
 
-    def _deallocate_block(self, block_id: int):
-        assert self.blocks[block_id].ref_count == 0
+    def _deallocate_block(self, block_id: int): # 把一个已经没人使用的 block 放回 free pool。
+        assert self.blocks[block_id].ref_count == 0 # 确保没人用了
         self.used_block_ids.remove(block_id)
         self.free_block_ids.append(block_id)
 
-    def can_allocate(self, seq: Sequence) -> int:
+    def can_allocate(self, seq: Sequence) -> int: # 1.找 prefix cache； 2.检查剩余 block 是否够用
         h = -1
         num_cached_blocks = 0
-        num_new_blocks = seq.num_blocks
-        for i in range(seq.num_blocks - 1):
+        num_new_blocks = seq.num_blocks # 假设这条 Seq 的所有 block 都需要从 free_block_ids 里拿
+        for i in range(seq.num_blocks - 1): # 检查除了最后一个之外的所有 block（最后一个很可能不全是 prefill）
             token_ids = seq.block(i)
             h = self.compute_hash(token_ids, h)
-            block_id = self.hash_to_block_id.get(h, -1)
-            if block_id == -1 or self.blocks[block_id].token_ids != token_ids:
-                break
+            block_id = self.hash_to_block_id.get(h, -1) # 寻找以前是否计算过这个 prefix，没有赋值 -1
+            if block_id == -1 or self.blocks[block_id].token_ids != token_ids: # 没算过 / 算过但是哈希不匹配
+                break # 因为 prefix cache 必须连续，所以一旦发现不匹配，就不再继续找了。
             num_cached_blocks += 1
             if block_id in self.used_block_ids:
-                num_new_blocks -= 1
+                num_new_blocks -= 1 # 因为这个 block 已经被使用了，不需要从 free_block_ids 里拿了
         if len(self.free_block_ids) < num_new_blocks:
-            return -1
-        return num_cached_blocks
+            return -1 # 无法分配
+        return num_cached_blocks # 可以分配，并且返回有多少个 block 可以从 prefix cache 里拿到。
 
     def allocate(self, seq: Sequence, num_cached_blocks: int):
         assert not seq.block_table

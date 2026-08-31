@@ -52,6 +52,7 @@ class LLMEngine:
         token_ids = self.model_runner.call("run", seqs, is_prefill)
         self.scheduler.postprocess(seqs, token_ids, is_prefill)
         outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
+        # print(f"prefill={is_prefill} n_seqs={len(seqs)} tokens={num_tokens}") # Output 4 Learning
         return outputs, num_tokens
 
     def is_finished(self):
@@ -75,7 +76,7 @@ class LLMEngine:
             output, num_tokens = self.step()
             if num_tokens > 0:
                 prefill_throughput = num_tokens / (perf_counter() - t)
-            else: # 为什么要用正负编码来区分 prefill 和 decode 的 throughput 呢？
+            else: # 为什么要用正负编码来区分 prefill 和 decode 的 throughput 呢？(方便区分的小巧思)
                 decode_throughput = -num_tokens / (perf_counter() - t)
             pbar.set_postfix({
                 "Prefill": f"{int(prefill_throughput)}tok/s",

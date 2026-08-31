@@ -25,7 +25,7 @@ class Sequence:
         self.num_cached_tokens = 0 # 已经存在 KV Cache 的 token 数
         self.num_scheduled_tokens = 0 # scheduler 本轮安排模型处理的 token 数
         self.is_prefill = True # 当前是不是 prompt 的 prefill 阶段
-        self.block_table = [] # 这条 sequence 使用哪些 KV Cache block
+        self.block_table = [] # 这条 sequence 使用哪些物理 KV Cache block
         self.temperature = sampling_params.temperature
         self.max_tokens = sampling_params.max_tokens
         self.ignore_eos = sampling_params.ignore_eos

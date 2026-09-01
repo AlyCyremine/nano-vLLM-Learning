@@ -44,8 +44,8 @@ class BlockManager:
         block_id = self.free_block_ids.popleft()
         block = self.blocks[block_id]
         assert block.ref_count == 0 # 既然是 free，就不应该还有 Seq 使用它。
-        if block.hash != -1 and self.hash_to_block_id.get(block.hash) == block_id:
-            del self.hash_to_block_id[block.hash]
+        if block.hash != -1 and self.hash_to_block_id.get(block.hash) == block_id: # 如果这个 block 之前已经计算过 prefix cache，并且还在 hash_to_block_id 中（有可能出现相同哈希值导致被覆盖）
+            del self.hash_to_block_id[block.hash] # 删除这个 block 的哈希值映射，避免后续错误地认为这个 block 还在 prefix cache 中。
         block.reset()
         self.used_block_ids.add(block_id)
         return block_id
@@ -73,8 +73,8 @@ class BlockManager:
         return num_cached_blocks # 可以分配，并且返回有多少个 block 可以从 prefix cache 里拿到。
 
     def allocate(self, seq: Sequence, num_cached_blocks: int):
-        assert not seq.block_table
-        h = -1
+        assert not seq.block_table # 确保 seq 还没有分配过 block
+        h = -1 
         for i in range(num_cached_blocks):
             token_ids = seq.block(i)
             h = self.compute_hash(token_ids, h)
@@ -88,11 +88,11 @@ class BlockManager:
                 self.used_block_ids.add(block_id)
             seq.block_table.append(block_id)
         for i in range(num_cached_blocks, seq.num_blocks):
-            seq.block_table.append(self._allocate_block())
+            seq.block_table.append(self._allocate_block()) # 分配新的 block
         seq.num_cached_tokens = num_cached_blocks * self.block_size
 
-    def deallocate(self, seq: Sequence):
-        for block_id in reversed(seq.block_table):
+    def deallocate(self, seq: Sequence): 
+        for block_id in reversed(seq.block_table): # 从最后一个开始往前
             block = self.blocks[block_id]
             block.ref_count -= 1
             if block.ref_count == 0:
@@ -101,18 +101,18 @@ class BlockManager:
         seq.block_table.clear()
 
     def can_append(self, seq: Sequence) -> bool:
-        return len(self.free_block_ids) >= (len(seq) % self.block_size == 1)
+        return len(self.free_block_ids) >= (len(seq) % self.block_size == 1) # 如果decode的时候下一个token需要新分配一个块，就需要至少1个free块。
 
     def may_append(self, seq: Sequence):
         if len(seq) % self.block_size == 1:
-            seq.block_table.append(self._allocate_block())
+            seq.block_table.append(self._allocate_block()) # 分配一个新块
 
-    def hash_blocks(self, seq: Sequence):
-        start = seq.num_cached_tokens // self.block_size
+    def hash_blocks(self, seq: Sequence): # prefill计算完一些完整 block后，把它们登记进 prefix cache。
+        start = seq.num_cached_tokens // self.block_size # 前面已经 cached 到哪个 block（向下取整）
         end = (seq.num_cached_tokens + seq.num_scheduled_tokens) // self.block_size
-        if start == end: return
+        if start == end: return # 没有完整的 block 可以登记进 prefix cache
         h = self.blocks[seq.block_table[start - 1]].hash if start > 0 else -1
-        for i in range(start, end):
+        for i in range(start, end): # 逐个处理新的完整 block
             block = self.blocks[seq.block_table[i]]
             token_ids = seq.block(i)
             h = self.compute_hash(token_ids, h)

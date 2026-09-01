@@ -279,3 +279,37 @@ $$
 ### Day 6
 
 大部分理解都在注释里，拉高了 Block Manager 的优先级，感觉不懂怎么分配 KV Cache 块的话没法弄懂 Scheduler。
+
+#### assert
+
+```python
+# Python 的 assert（断言）核心机制就是：条件为真（True）时，程序静默通过，继续执行下一行代码；条件为假（False）时，立即抛出 AssertionError 异常并终止程序（除非被捕获）。
+
+# 条件为真 -> 什么都不发生，程序继续
+assert 1 + 1 == 2
+print("这里会被执行")
+
+# 条件为假 -> 抛出 AssertionError
+# assert 1 + 1 == 3  # 报错：AssertionError
+
+# 带自定义报错信息
+# assert 1 + 1 == 3, "数学计算错误"  # 报错：AssertionError: 数学计算错误
+
+# 1. assert 可能被全局禁用：如果你在启动 Python 时带上了 -O（优化）或 -OO 参数，所有 assert 语句会被完全忽略，相当于被删除了。此时无论条件成不成立，它都不会报错（也不会执行）。
+# 即使断言失败，加了 -O 后也不会报错，会直接跳过
+python -O my_script.py
+
+# 2. 不要在断言里写会改变状态的代码：因为断言可能被跳过，如果你在里面修改变量或执行函数，程序的行为会变得不可预测。
+# 危险写法：千万不要这样写！
+# assert (x := x + 1) > 0  # 如果开启了 -O，这行赋值就不会执行
+```
+### Day 7
+
+```python
+BlockManager line 114: h = self.blocks[seq.block_table[start - 1]].hash if start > 0 else -1
+# 找到 start 上一个块的 hash 值，因为 hash 值是链式的，需要上一个的值来更新这一个块
+# h0 = hash(block0)
+# h1 = hash(h0 + block1)
+# h2 = hash(h1 + block2)
+```
+

@@ -1,4 +1,4 @@
-### Day 1
+### ,Day 1
 
 装环境，编译flash atten，把nano-vLLM跑起来
 
@@ -311,5 +311,66 @@ BlockManager line 114: h = self.blocks[seq.block_table[start - 1]].hash if start
 # h0 = hash(block0)
 # h1 = hash(h0 + block1)
 # h2 = hash(h1 + block2)
+```
+
+### Day 8
+
+```python
+if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq
+	break
+    
+# 这里的意思是：如果本轮剩下的可以 prefill 的额度 < 本轮需要 prefill 的 token 数量，并且已经有 seq 需要进行 prefill 了，就不强行把手上这轮的 token 截成两段送进去 prefill 了。也就是注释里说的，只允许第一个 seq 被截断后送进 prefill。
+# 本质是为了简化实现而做的性能妥协（如：限1000，第一轮100，第二轮901，两轮总共效率 1001/2000 = 50%).
+# 一旦允许 batch 里任意 Sequence 被截断，系统就必须支持更一般的 每条 Sequence 都处于不同 prefill 进度 的 batch，实现就会更复杂。
+```
+
+### Day 9
+
+```python
+@classmethod # 类方法可以通过类名直接调用，而不需要实例化对象。
+def compute_hash(cls, token_ids: list[int], prefix: int = -1): # 计算 token_ids+prefix 的哈希值
+	h = xxhash.xxh64()
+    if prefix != -1:
+        h.update(prefix.to_bytes(8, "little")) 
+	h.update(np.array(token_ids).tobytes())
+	return h.intdigest()
+
+# 写死 小端序"little" 是为了保证确定性和跨平台一致性
+# 直接把上一轮算好的 64 位整数哈希值（代表了前面所有的历史）作为本轮的输入前缀，本轮只需要处理“8 个字节的前缀 + 当前这一小块的 token”，而不需要把前几轮的所有 token 拼成一个超长列表，计算所有数据块的总哈希。
+# to_bytes(8)，不管上一轮多少 token 都把它压缩成 8 字节，让内存不会无休止增长。
+```
+
+#### python 的 while … else … 特殊语法
+
+```python
+while ...:
+    ...
+else:
+    ...
+# while 如果是因为 “条件自然变成 False” 而结束，则执行 else；如果因为 break 结束，则不执行。
+```
+
+#### 关于 decode
+
+```python
+seq.num_scheduled_tokens = 1
+seq.is_prefill = False
+self.block_manager.may_append(seq)
+scheduled_seqs.append(seq)
+# 因为 schedule 在本轮实际运行之前，所以我们这里 may_append 是在看上一轮新生成的 token。因为上一轮新生成的 token 是从最后的 classifier 出来的，并没有计算 QKV，所以也还没分配 KV Cache块 所需要的空间。又因为 decode 是一个一个出新 token，所以如果刚好超过了 Cache 块的大小，需要新块的时候，may_append 那边会因为 mod 为 1 而分配新的 KV Cache块 空间。
+```
+
+#### 关于 postprocess
+
+```python
+if is_prefill and seq.num_cached_tokens < seq.num_tokens: # 还没 prefill 完，继续等待调度
+    continue 
+seq.append_token(token_id) # 把新生成的 token 加到 seq 里
+# 一次完整 prefill 后就已经能得到 completion 的第一个 token 了
+
+if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens:
+# 判断生成是否结束（EOS / 已经达到 seq 允许的 token 上限了）就 释放 KV Cache + 从 running 移除
+
+# 而 deallocate 释放的是 “Seq 对 KV block 的占用权” ，而不是立即擦除 “block 中的 KV Cache 内容”
 ```
 

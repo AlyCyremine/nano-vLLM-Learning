@@ -36,7 +36,7 @@ class BlockManager:
     def compute_hash(cls, token_ids: list[int], prefix: int = -1): # 计算 token_ids+prefix 的哈希值
         h = xxhash.xxh64()
         if prefix != -1:
-            h.update(prefix.to_bytes(8, "little")) # 将 prefix 转换为 8 字节的小端字节序，并更新哈希对象
+            h.update(prefix.to_bytes(8, "little")) # 将 prefix 转换为 8 字节的小端字节序，并更新哈希对象（写死 小端序 是为了保证确定性和跨平台一致性）
         h.update(np.array(token_ids).tobytes())
         return h.intdigest()
 
@@ -84,14 +84,14 @@ class BlockManager:
                 block.ref_count += 1
             else:
                 block.ref_count = 1
-                self.free_block_ids.remove(block_id)
+                self.free_block_ids.remove(block_id) # 重新激活
                 self.used_block_ids.add(block_id)
             seq.block_table.append(block_id)
         for i in range(num_cached_blocks, seq.num_blocks):
             seq.block_table.append(self._allocate_block()) # 分配新的 block
-        seq.num_cached_tokens = num_cached_blocks * self.block_size
+        seq.num_cached_tokens = num_cached_blocks * self.block_size # 因为前面 can_allocate() 忽略了最后一个不满载的块，所以没问题
 
-    def deallocate(self, seq: Sequence): 
+    def deallocate(self, seq: Sequence): # 解除 seq 对 KV Cache块 的绑定
         for block_id in reversed(seq.block_table): # 从最后一个开始往前
             block = self.blocks[block_id]
             block.ref_count -= 1
@@ -112,7 +112,7 @@ class BlockManager:
         end = (seq.num_cached_tokens + seq.num_scheduled_tokens) // self.block_size
         if start == end: return # 没有完整的 block 可以登记进 prefix cache
         h = self.blocks[seq.block_table[start - 1]].hash if start > 0 else -1
-        for i in range(start, end): # 逐个处理新的完整 block
+        for i in range(start, end): # 逐个处理新的完整 block 的哈希值和映射
             block = self.blocks[seq.block_table[i]]
             token_ids = seq.block(i)
             h = self.compute_hash(token_ids, h)

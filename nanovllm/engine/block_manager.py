@@ -25,8 +25,9 @@ class Block: # 描述一个 物理KV Cache块 的管理信息
 
 class BlockManager:
 
-    def __init__(self, num_blocks: int, block_size: int):
+    def __init__(self, num_blocks: int, block_size: int, enable_prefix_caching: bool = True):
         self.block_size = block_size
+        self.enable_prefix_caching = enable_prefix_caching
         self.blocks: list[Block] = [Block(i) for i in range(num_blocks)] # 对象: 类型 = 初始值
         self.hash_to_block_id: dict[int, int] = dict()
         self.free_block_ids: deque[int] = deque(range(num_blocks))
@@ -56,6 +57,8 @@ class BlockManager:
         self.free_block_ids.append(block_id)
 
     def can_allocate(self, seq: Sequence) -> int: # 1.找 prefix cache； 2.检查剩余 block 是否够用
+        if not self.enable_prefix_caching:
+            return 0 if len(self.free_block_ids) >= seq.num_blocks else -1
         h = -1
         num_cached_blocks = 0
         num_new_blocks = seq.num_blocks # 假设这条 Seq 的所有 block 都需要从 free_block_ids 里拿
@@ -108,6 +111,8 @@ class BlockManager:
             seq.block_table.append(self._allocate_block()) # 分配一个新块
 
     def hash_blocks(self, seq: Sequence): # prefill计算完一些完整 block后，把它们登记进 prefix cache。
+        if not self.enable_prefix_caching:
+            return
         start = seq.num_cached_tokens // self.block_size # 前面已经 cached 到哪个 block（向下取整）
         end = (seq.num_cached_tokens + seq.num_scheduled_tokens) // self.block_size
         if start == end: return # 没有完整的 block 可以登记进 prefix cache

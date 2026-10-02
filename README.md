@@ -10,6 +10,8 @@
 
 A lightweight vLLM implementation built from scratch.
 
+Project plans and experiment records are maintained in [docs](docs/README.md).
+
 ## Key Features
 
 * 🚀 **Fast offline inference** - Comparable inference speeds to vLLM
@@ -42,6 +44,19 @@ prompts = ["Hello, Nano-vLLM."]
 outputs = llm.generate(prompts, sampling_params)
 outputs[0]["text"]
 ```
+
+### Qwen3.5-0.8B text inference
+
+The dense text backbone is supported on a single CUDA GPU, including Gated DeltaNet,
+chunked prefill and paged KV for full attention. Qwen3.5 uses eager execution with
+prefix caching disabled. Use `temperature=0` for greedy decoding.
+
+```bash
+python example_qwen3_5.py /YOUR/Qwen3.5-0.8B/PATH --max-tokens 128
+```
+
+See [the text inference guide](docs/qwen3_5_text_inference.md) for the tested WSL2
+environment, memory settings and validation commands. MTP remains planned work.
 
 ## Benchmark
 

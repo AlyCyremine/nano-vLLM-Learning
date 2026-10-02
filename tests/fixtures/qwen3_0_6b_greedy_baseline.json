@@ -1,0 +1,7 @@
+{
+  "baseline_commit": "516b9dd",
+  "model": "Qwen/Qwen3-0.6B",
+  "dtype": "bfloat16",
+  "prompt_ids": [785, 6722, 315, 9625, 374],
+  "output_ids": [12095, 13, 576, 6722, 315, 15344, 374, 21718]
+}

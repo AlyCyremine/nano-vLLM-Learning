@@ -18,6 +18,7 @@ class LLMEngine:
         config_fields = {field.name for field in fields(Config)}
         config_kwargs = {k: v for k, v in kwargs.items() if k in config_fields}
         config = Config(model, **config_kwargs)
+        self.config = config
         Sequence.block_size = config.kvcache_block_size
         self.ps = []
         self.events = []
@@ -35,23 +36,38 @@ class LLMEngine:
         atexit.register(self.exit)
 
     def exit(self):
+        if not hasattr(self, "model_runner"):
+            return
         self.model_runner.call("exit")
         del self.model_runner
         for p in self.ps:
             p.join()
+        atexit.unregister(self.exit)
 
     def add_request(self, prompt: str | list[int], sampling_params: SamplingParams):
         if isinstance(prompt, str):
             prompt = self.tokenizer.encode(prompt)
+        if not prompt:
+            raise ValueError("Prompt must contain at least one token")
+        if len(prompt) + sampling_params.max_tokens > self.config.max_model_len:
+            raise ValueError("Prompt plus max_tokens exceeds max_model_len")
+        if any(token < 0 or token >= self.config.hf_text_config.vocab_size for token in prompt):
+            raise ValueError("Prompt contains a token ID outside the model vocabulary")
         seq = Sequence(prompt, sampling_params)
         self.scheduler.add(seq)
 
     def step(self):
         seqs, is_prefill = self.scheduler.schedule()
         num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
-        token_ids = self.model_runner.call("run", seqs, is_prefill)
+        if self.config.is_hybrid:
+            active_ids = [seq.seq_id for seq in (*self.scheduler.waiting, *self.scheduler.running) if seq.block_table]
+            token_ids = self.model_runner.call("run", seqs, is_prefill, active_ids)
+        else:
+            token_ids = self.model_runner.call("run", seqs, is_prefill)
         self.scheduler.postprocess(seqs, token_ids, is_prefill)
         outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
+        if self.config.is_hybrid and outputs:
+            self.model_runner.call("release_sequences", [seq_id for seq_id, _ in outputs])
         # print(f"prefill={is_prefill} n_seqs={len(seqs)} tokens={num_tokens}") # Output 4 Learning
         return outputs, num_tokens
 

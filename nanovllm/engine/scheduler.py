@@ -11,8 +11,9 @@ class Scheduler:
         self.max_num_seqs = config.max_num_seqs
         self.max_num_batched_tokens = config.max_num_batched_tokens
         self.eos = config.eos
+        self.eos_token_ids = set(config.eos_token_ids) | {config.eos}
         self.block_size = config.kvcache_block_size
-        self.block_manager = BlockManager(config.num_kvcache_blocks, config.kvcache_block_size)
+        self.block_manager = BlockManager(config.num_kvcache_blocks, config.kvcache_block_size, config.enable_prefix_caching)
         self.waiting: deque[Sequence] = deque()
         self.running: deque[Sequence] = deque()
 
@@ -25,6 +26,7 @@ class Scheduler:
     def schedule(self) -> tuple[list[Sequence], bool]:
         scheduled_seqs = [] # 空 batch，存放本轮调度的所有 sequence
         num_batched_tokens = 0
+        active_state_ids = {seq.seq_id for seq in (*self.waiting, *self.running) if seq.block_table}
 
         # prefill
         while self.waiting and len(scheduled_seqs) < self.max_num_seqs:
@@ -33,6 +35,8 @@ class Scheduler:
             if remaining == 0: # 因为 min(num_tokens, remaining)
                 break
             if not seq.block_table: # 第一次进入 prefill 的新 Sequence
+                if len(active_state_ids) >= self.max_num_seqs:
+                    break
                 num_cached_blocks = self.block_manager.can_allocate(seq) # 有无可复用的 prefix cache 块数量，是否可以分配 KV Cache块
                 if num_cached_blocks == -1: # 无法分配
                     break
@@ -44,6 +48,7 @@ class Scheduler:
                 break
             if not seq.block_table:
                 self.block_manager.allocate(seq, num_cached_blocks)
+                active_state_ids.add(seq.seq_id)
             seq.num_scheduled_tokens = min(num_tokens, remaining) # 这一轮计划完成的 prefill
             num_batched_tokens += seq.num_scheduled_tokens # 统计调度的总 token 数
             if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens: # 如果 prefill 完成了
@@ -87,7 +92,7 @@ class Scheduler:
             if is_prefill and seq.num_cached_tokens < seq.num_tokens: # 还没 prefill 完，继续等待调度
                 continue 
             seq.append_token(token_id) # 把新生成的 token 加到 seq 里
-            if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens: # 判断生成是否结束
+            if (not seq.ignore_eos and token_id in self.eos_token_ids) or seq.num_completion_tokens >= seq.max_tokens: # 判断生成是否结束
                 seq.status = SequenceStatus.FINISHED
                 self.block_manager.deallocate(seq)
                 self.running.remove(seq)

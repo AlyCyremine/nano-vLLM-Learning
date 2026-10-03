@@ -25,18 +25,25 @@ class ModelRunner:
         dist.init_process_group("nccl", "tcp://localhost:2333", world_size=self.world_size, rank=rank)
         torch.cuda.set_device(rank)
         default_dtype = torch.get_default_dtype()
+        default_device = torch.get_default_device()
         torch.set_default_dtype(config.model_dtype)
         torch.set_default_device("cuda")
-        self.model = create_model(config)
-        self.weight_load_report = load_model(self.model, config.model)
-        self.model.eval()
-        self.sampler = Sampler()
-        self.warmup_model()
-        self.allocate_kv_cache()
-        if not self.enforce_eager:
-            self.capture_cudagraph()
-        torch.set_default_device("cpu")
-        torch.set_default_dtype(default_dtype)
+        try:
+            self.model = create_model(config)
+            self.weight_load_report = load_model(self.model, config.model)
+            self.model.eval()
+            self.sampler = Sampler()
+            self.warmup_model()
+            self.allocate_kv_cache()
+            if not self.enforce_eager:
+                self.capture_cudagraph()
+        except Exception:
+            reset_context()
+            dist.destroy_process_group()
+            raise
+        finally:
+            torch.set_default_device(default_device)
+            torch.set_default_dtype(default_dtype)
 
         if self.world_size > 1:
             if rank == 0:

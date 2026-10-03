@@ -21,7 +21,16 @@ class Scheduler:
         return not self.waiting and not self.running
 
     def add(self, seq: Sequence):
+        self.validate_request(seq)
         self.waiting.append(seq)
+
+    def validate_request(self, seq: Sequence):
+        # All consumed tokens must fit even when this is the only active request.
+        # The final sampled token is returned without another model forward.
+        required_tokens = seq.num_prompt_tokens + seq.max_tokens - 1
+        capacity = len(self.block_manager.blocks) * self.block_size
+        if required_tokens > capacity:
+            raise ValueError(f"Request needs {required_tokens} cached tokens, exceeding KV cache capacity ({capacity})")
 
     def schedule(self) -> tuple[list[Sequence], bool]:
         scheduled_seqs = [] # 空 batch，存放本轮调度的所有 sequence

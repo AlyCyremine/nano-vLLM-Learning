@@ -52,8 +52,12 @@ chunked prefill and paged KV for full attention. Qwen3.5 uses eager execution wi
 prefix caching disabled. Use `temperature=0` for greedy decoding.
 
 ```bash
-python example_qwen3_5.py /YOUR/Qwen3.5-0.8B/PATH --max-tokens 128
+python example_qwen3_5.py
 ```
+
+Like `example.py`, this script defines the model path, sampling parameters and two
+prompts directly in `main()`. It reads `.cache/Qwen3.5-0.8B` by default; edit `path`
+if your checkpoint is elsewhere. Thinking is disabled for this text example.
 
 See [the text inference guide](docs/qwen3_5_text_inference.md) for the tested WSL2
 environment, memory settings and validation commands. MTP remains planned work.

@@ -157,6 +157,15 @@ class TextModelTests(unittest.TestCase):
             self.assertEqual(layer.linear_attn.conv_states.dtype, torch.bfloat16)
         torch.testing.assert_close(self.model.model.layers[-1].self_attn.rotary_emb.inv_freq, original, atol=0, rtol=0)
 
+    def test_checkpoint_can_store_either_shared_weight_alias(self):
+        weights = {name: tensor.clone() for name, tensor in self.reference.state_dict().items()
+                   if name != "model.embed_tokens.weight"}
+        with tempfile.TemporaryDirectory() as directory:
+            save_file(weights, str(Path(directory) / "model.safetensors"))
+            load_model(self.model, directory)
+        self.assertIs(self.model.lm_head.weight, self.model.model.embed_tokens.weight)
+        torch.testing.assert_close(self.model.model.embed_tokens.weight, self.reference.model.embed_tokens.weight)
+
 
 class StateAndSamplingTests(unittest.TestCase):
     def test_state_capacity_and_preemption(self):

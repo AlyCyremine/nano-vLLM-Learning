@@ -6,6 +6,7 @@
 
 - [Qwen3.5-0.8B 纯文本推理适配与 MTP 实施计划](qwen3_5_0_8b_mtp_plan.md)
 - [Qwen3.5-0.8B 纯文本推理：运行与验证](qwen3_5_text_inference.md)
+- [Qwen3.5 适配详解：相比原版新增了什么](qwen3_5_changes_explained.md)
 
 ## 约定
 

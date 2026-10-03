@@ -44,7 +44,10 @@ def load_model(model: nn.Module, path: str):
                     weight_loader(param, f.get_tensor(original_name))
                     loaded.add(weight_name)
     tied = getattr(model, "tied_weights_mapping", {})
-    missing = [name for name, _ in model.named_parameters() if name not in loaded and tied.get(name) not in loaded]
+    # safetensors may keep either name of a shared Parameter (embedding / LM head).
+    loaded_parameter_ids = {id(model.get_parameter(name)) for name in loaded}
+    missing = [name for name, param in model.named_parameters()
+               if id(param) not in loaded_parameter_ids and tied.get(name) not in loaded]
     if missing:
         raise ValueError(f"Missing model weights: {missing}")
     for name, actual_shards in shards.items():

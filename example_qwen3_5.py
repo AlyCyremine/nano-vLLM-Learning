@@ -1,29 +1,37 @@
-import argparse
-from transformers import AutoTokenizer
+import os
 from nanovllm import LLM, SamplingParams
+from transformers import AutoTokenizer
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Qwen3.5-0.8B text-only inference")
-    parser.add_argument("model", help="Local Qwen3.5-0.8B checkpoint directory")
-    parser.add_argument("--prompt", default="用中文简要解释什么是 KV cache。")
-    parser.add_argument("--max-tokens", type=int, default=128)
-    parser.add_argument("--temperature", type=float, default=0)
-    parser.add_argument("--max-model-len", type=int, default=4096)
-    parser.add_argument("--max-num-seqs", type=int, default=4)
-    parser.add_argument("--gpu-memory-utilization", type=float, default=0.7)
-    args = parser.parse_args()
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    prompt = tokenizer.apply_chat_template(
-        [{"role": "user", "content": args.prompt}], tokenize=True,
-        add_generation_prompt=True, enable_thinking=False, return_dict=False,
+    # Change this path if the checkpoint is stored elsewhere.
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache", "Qwen3.5-0.8B")
+    tokenizer = AutoTokenizer.from_pretrained(path)
+    llm = LLM(
+        path, enforce_eager=True, tensor_parallel_size=1,
+        max_model_len=1024, max_num_seqs=2, gpu_memory_utilization=0.6,
     )
-    llm = LLM(args.model, tensor_parallel_size=1, enforce_eager=True,
-              max_model_len=args.max_model_len, max_num_seqs=args.max_num_seqs,
-              gpu_memory_utilization=args.gpu_memory_utilization)
+    sampling_params = SamplingParams(temperature=0.6, max_tokens=256)
+    prompts = [
+        "introduce yourself",
+        "list all prime numbers within 100",
+    ]
     try:
-        output = llm.generate([prompt], SamplingParams(temperature=args.temperature, max_tokens=args.max_tokens))
-        print(tokenizer.decode(output[0]["token_ids"], skip_special_tokens=True))
+        prompts = [
+            tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+            for prompt in prompts
+        ]
+        outputs = llm.generate(prompts, sampling_params)
+
+        for prompt, output in zip(prompts, outputs):
+            print("\n")
+            print(f"Prompt: {prompt!r}")
+            print(f"Completion: {output['text']!r}")
     finally:
         llm.exit()
 
